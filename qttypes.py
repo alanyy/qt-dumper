@@ -2205,7 +2205,7 @@ def qdump__std__deque(d, value):
                     plast = pfirst + bufsize
                     pcur = pfirst
 
-def qdump__SASSTL__deque(d, value):
+def qdump___SASSTL__deque(d, value):
     innerType = d.templateArgument(value.type, 0)
     innerSize = innerType.sizeof
     bufsize = 1
@@ -2215,10 +2215,14 @@ def qdump__SASSTL__deque(d, value):
     impl = value
     start = impl["_M_start"]
     finish = impl["_M_finish"]
-    size = (bufsize * (finish["_M_node"] - start["_M_node"] - 1)
-        + (finish["_M_cur"] - finish["_M_first"])
-        + (start["_M_last"] - start["_M_cur"]))
-
+    delta_n = finish['_M_node'] - start['_M_node'] - 1
+    delta_s = start['_M_last'] - start['_M_cur']
+    delta_f = finish['_M_cur'] - finish['_M_first']
+    if delta_n == -1:
+        size = delta_f
+    else:
+        size = bufsize * delta_n + delta_s + delta_f
+    print size
     check(0 <= size and size <= 1000 * 1000 * 1000)
     d.putItemCount(size)
     d.putNumChild(size)
@@ -2237,6 +2241,9 @@ def qdump__SASSTL__deque(d, value):
                     pfirst = newnode.dereference()
                     plast = pfirst + bufsize
                     pcur = pfirst
+
+def qdump___STL__deque(d, value):
+    qdump___SASSTL__deque(d, value)
 
 def qdump__std____debug__deque(d, value):
     qdump__std__deque(d, value)
@@ -2264,10 +2271,9 @@ def qdump__std__list(d, value):
                 d.putSubItem(i, (p + 1).cast(innerPointer).dereference())
                 p = p["_M_next"]
 
-def qdump__SASSTL__list(d, value):
+def qdump___SASSTL__list(d, value):
     head = d.dereferenceValue(value)
-    impl = value
-    node = impl["_M_node"]
+    node = value["_M_node"]['_M_data']
     size = 0
     pp = d.dereference(head)
     while head != pp and size <= 1001:
@@ -2285,6 +2291,9 @@ def qdump__SASSTL__list(d, value):
                 innerPointer = innerType.pointer()
                 d.putSubItem(i, (p + 1).cast(innerPointer).dereference())
                 p = p["_M_next"]
+
+def qdump___STL__list(d, value):
+    qdump___SASSTL__list(d, value)
 
 def qdump__std____debug__list(d, value):
     qdump__std__list(d, value)
@@ -2407,6 +2416,12 @@ def qdump___SASSTL__map(d, value):
                     while not isNull(node["_M_left"]):
                         node = node["_M_left"]
 
+def qform___STL__map():
+    return mapForms()
+
+def qdump___STL__map(d, value):
+    qdump___SASSTL__map(d, value)
+
 def qdump__std____debug__map(d, value):
     qdump__std__map(d, value)
 
@@ -2491,7 +2506,7 @@ def qdump__std__set(d, value):
                     while not isNull(node["_M_left"]):
                         node = node["_M_left"]
 
-def qdump__SASSTL__set(d, value):
+def qdump___SASSTL__set(d, value):
     impl = value["_M_t"]
     size = int(impl["_M_node_count"])
     check(0 <= size and size <= 100*1000*1000)
@@ -2499,7 +2514,7 @@ def qdump__SASSTL__set(d, value):
     d.putNumChild(size)
     if d.isExpanded():
         valueType = d.templateArgument(value.type, 0)
-        node = impl["_M_header"]["_M_left"]
+        node = impl["_M_header"]['_M_data']["_M_left"]
         with Children(d, size, maxNumChild=1000, childType=valueType):
             for i in d.childRange():
                 d.putSubItem(i, (node + 1).cast(valueType.pointer()).dereference())
@@ -2515,11 +2530,20 @@ def qdump__SASSTL__set(d, value):
                     while not isNull(node["_M_left"]):
                         node = node["_M_left"]
 
+def qdump___STL__set(d, value):
+    qdump___SASSTL__set(d, value)
+
 def qdump__std__stack(d, value):
     qdump__std__deque(d, value["c"])
 
-def qdump__SASSTL__stack(d, value):
-    qdump__SASSTL__deque(d, value["c"])
+def qdump___SASSTL__stack(d, value):
+    qdump___SASSTL__deque(d, value["c"])
+
+def qdump___STL__stack(d, value):
+    try:
+        qdump___SASSTL__stack(d, value)
+    except Exception as e:
+        print e
 
 def qdump__std____debug__stack(d, value):
     qdump__std__stack(d, value)
@@ -2841,41 +2865,8 @@ def qdump___SASSTL__vector(d, value):
         else:
             d.putArrayData(type, start, size)
 
-def qdump__stlpd_std__vector(d, value):
-    type = d.templateArgument(value.type, 0)
-    impl = value["_M_non_dbg_impl"]
-    alloc = impl["_M_end_of_storage"]["_M_data"]
-    isBool = type.code == gdb.TYPE_CODE_BOOL
-    if isBool:
-        start = impl["_M_start"]["_M_p"]
-        finish = impl["_M_finish"]["_M_p"]
-        # FIXME: 8 is CHAR_BIT
-        storage = d.lookupType("unsigned long")
-        storagesize = storage.sizeof * 8
-        size = (finish - start) * storagesize
-        size += impl["_M_finish"]["_M_offset"]
-        size -= impl["_M_start"]["_M_offset"]
-    else:
-        start = impl["_M_start"]
-        finish = impl["_M_finish"]
-        size = finish - start
-
-    check(0 <= size and size <= 1000 * 1000 * 1000)
-    check(finish <= alloc)
-    checkPointer(start)
-    checkPointer(finish)
-    checkPointer(alloc)
-
-    d.putItemCount(size)
-    d.putNumChild(size)
-    if d.isExpanded():
-        if isBool:
-            with Children(d, size, maxNumChild=10000, childType=type):
-                for i in d.childRange():
-                    q = start + i / storagesize
-                    d.putBoolItem(str(i), (q.dereference() >> (i % storagesize)) & 1)
-        else:
-            d.putArrayData(type, start, size)
+def qdump___STL__vector(d, value):
+    qdump___SASSTL__vector(d, value)
 
 def qdump__std____1__vector(d, value):
     innerType = d.templateArgument(value.type, 0)
